@@ -32,6 +32,43 @@ export const MUSIC_EXAMPLE = 'Calm village theme with acoustic guitar, flute and
 export const VOICE_EXAMPLE = 'The bridge is out. You will have to go around through the forest.'
 export const DEFAULT_VOICE_LABEL = 'Narrator'
 
+/** Built-in voices: reference clips rendered once with Kokoro-82M (Apache-2.0, synthetic voices,
+ * commercial use allowed), which Chatterbox (MIT) then speaks in. Files: /srv/ai/models/voices. */
+export const PRESET_VOICES = [
+  { id: 'preset_warm_narrator', label: 'Warm narrator' },
+  { id: 'preset_calm_narrator', label: 'Calm narrator' },
+  { id: 'preset_storyteller', label: 'Storyteller (British)' },
+  { id: 'preset_noble_lady', label: 'Noble lady (British)' },
+  { id: 'preset_deep_warrior', label: 'Deep warrior' },
+  { id: 'preset_old_sage', label: 'Old sage (British)' },
+  { id: 'preset_young_hero', label: 'Young hero' },
+  { id: 'preset_rogue', label: 'Rogue' },
+]
+
+/** Chatterbox "exaggeration": it barely changes below 0.5 and garbles words past ~1.3. */
+export const DELIVERY = [
+  { label: 'Calm', value: 0.35 },
+  { label: 'Normal', value: 0.5 },
+  { label: 'Lively', value: 0.8 },
+  { label: 'Dramatic', value: 1.15 },
+]
+
+export const LYRICS_EXAMPLE = `[verse]
+Lanterns glowing on the harbour wall
+Sailors singing as the shadows fall
+
+[chorus]
+Raise your cup and sing it loud
+We are home beneath the cloud`
+
+/** "Calm version": a remix of a music loop that keeps its tempo and loop points, so Godot can
+ * crossfade between exploring (calm) and action (the original). Measured on Stable Audio 3: a
+ * calmer remix works (quieter, sparser, darker); asking for a *more* intense one barely changes
+ * anything, so the original is the intense layer. */
+export const INTENSITIES = [
+  { id: 'calm', label: 'Calm', prompt: 'calm, soft and gentle, quiet, sparse arrangement, no drums, ambient pads' },
+]
+
 export const LANGUAGES: Record<string, string> = {
   en: 'English', ar: 'Arabic', da: 'Danish', de: 'German', el: 'Greek', es: 'Spanish', fi: 'Finnish',
   fr: 'French', he: 'Hebrew', hi: 'Hindi', it: 'Italian', ja: 'Japanese', ko: 'Korean', ms: 'Malay',
@@ -48,10 +85,16 @@ export const LIMITS = {
   loopSeconds: [5, 120], // loops are generated longer than asked, within the model's 180 s
   versions: [1, 4],
   delivery: [0.25, 1.5], // Chatterbox "exaggeration": calm .. dramatic
+  lyrics: 3000,
+  songSeconds: [10, 240],
 }
 
 export function sfxCategory(id: string | undefined): SfxCategory | undefined {
   return SFX_CATEGORIES.find((c) => c.id === id)
+}
+
+export function presetVoice(id: string | null | undefined) {
+  return PRESET_VOICES.find((v) => v.id === id)
 }
 
 export function profileFor(kind: Kind, category: string | undefined, loop: boolean): Profile {

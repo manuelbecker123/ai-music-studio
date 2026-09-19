@@ -1,10 +1,14 @@
 import { useState } from 'react'
 
 import { api, type NewTake, type Take, type Voice } from '../api'
+import { VoiceRecorder } from './VoiceRecorder'
 import {
-  DEFAULT_VOICE_LABEL, LANGUAGES, LIMITS, MUSIC_EXAMPLE, MUSIC_LENGTHS, SFX_CATEGORIES, VOICE_EXAMPLE, sfxCategory,
-  type Kind,
+  DEFAULT_VOICE_LABEL, DELIVERY, LANGUAGES, LIMITS, LYRICS_EXAMPLE, MUSIC_EXAMPLE, MUSIC_LENGTHS, PRESET_VOICES,
+  SFX_CATEGORIES, VOICE_EXAMPLE, sfxCategory, type Kind,
 } from '../catalog'
+
+const SONG_LENGTHS = [60, 120, 180]
+const SONG_EXAMPLE = 'Cheerful folk song with acoustic guitar, fiddle and a warm female voice'
 
 const TABS: { kind: Kind; label: string; hint: string }[] = [
   { kind: 'sfx', label: 'Sound effects', hint: 'Short sounds: steps, hits, spells, clicks, creatures, backgrounds.' },
@@ -15,7 +19,7 @@ const TABS: { kind: Kind; label: string; hint: string }[] = [
 type Props = {
   voices: Voice[]
   onCreated: (ts: Take[]) => void
-  onRecordVoice: () => void
+  onVoiceAdded: (v: Voice) => void
 }
 
 function Chips<T extends string | number>({ options, value, onChange, label }: {
@@ -36,7 +40,7 @@ function Hint({ children }: { children: React.ReactNode }) {
   return <p className="hint">{children}</p>
 }
 
-export function Composer({ voices, onCreated, onRecordVoice }: Props) {
+export function Composer({ voices, onCreated, onVoiceAdded }: Props) {
   const [kind, setKind] = useState<Kind>('sfx')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,9 +55,17 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
   const [musicPrompt, setMusicPrompt] = useState('')
   const [length, setLength] = useState(30)
   const [loop, setLoop] = useState(true)
+  const [vocals, setVocals] = useState(false)
+  const [lyrics, setLyrics] = useState('')
+  const [songLength, setSongLength] = useState(120)
   // voice
   const [line, setLine] = useState('')
-  const [voiceId, setVoiceId] = useState('')
+  // null = the default: a recorded voice named "Narrator" if there is one, else the Warm narrator
+  // preset (clearer than Chatterbox's built-in voice, which can swallow a line's first word)
+  const [voiceChoice, setVoiceChoice] = useState<string | null>(null)
+  const narrator = voices.find((v) => v.name.trim().toLowerCase() === DEFAULT_VOICE_LABEL.toLowerCase())
+  const voiceId = voiceChoice ?? narrator?.id ?? PRESET_VOICES[0].id
+  const [recording, setRecording] = useState(false)
   const [delivery, setDelivery] = useState(0.5)
   const [language, setLanguage] = useState('en')
   // shared "more options"
@@ -71,6 +83,8 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
     if (kind === 'sfx') {
       body = { kind, category, prompt: sfxPrompt || cat.example, versions: cat.loop ? 1 : versions, ...shared,
                ...(sfxSeconds !== '' ? { seconds: sfxSeconds } : {}) }
+    } else if (kind === 'music' && vocals) {
+      body = { kind, vocals: true, prompt: musicPrompt || SONG_EXAMPLE, lyrics: lyrics || LYRICS_EXAMPLE, seconds: songLength, language }
     } else if (kind === 'music') {
       body = { kind, prompt: musicPrompt || MUSIC_EXAMPLE, seconds: length, loop, ...shared }
     } else {
@@ -129,19 +143,43 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
           <label className="control">
             <span className="meta-label">Describe it</span>
             <textarea className="textarea" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)}
-              placeholder={MUSIC_EXAMPLE} maxLength={LIMITS.prompt} />
-            <Hint>Tip: say the mood, the instruments and the speed (for example 90 BPM).</Hint>
+              placeholder={vocals ? SONG_EXAMPLE : MUSIC_EXAMPLE} maxLength={LIMITS.prompt} />
+            <Hint>{vocals ? 'Tip: say the style, the instruments and the singer (female, male, choir…).'
+                          : 'Tip: say the mood, the instruments and the speed (for example 90 BPM).'}</Hint>
           </label>
-          <div className="control">
-            <span className="meta-label">Length</span>
-            <Chips label="Length" value={length} onChange={setLength}
-              options={MUSIC_LENGTHS.map((s) => ({ value: s, label: s < 60 ? `${s} s` : `${s / 60} min` }))} />
-          </div>
           <label className="switch">
-            <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />
-            <span className="meta-label">Loop</span>
-            <span className="hint">{loop ? 'Repeats forever without a gap, for levels and menus.' : 'Plays once, with a natural ending.'}</span>
+            <input type="checkbox" checked={vocals} onChange={(e) => setVocals(e.target.checked)} />
+            <span className="meta-label">Vocals</span>
+            <span className="hint">{vocals ? 'A song with your lyrics sung (plays once).' : 'Instrumental, no singing.'}</span>
           </label>
+          {vocals ? (
+            <>
+              <label className="control">
+                <span className="meta-label">Lyrics</span>
+                <textarea className="textarea textarea--tall" value={lyrics} onChange={(e) => setLyrics(e.target.value)}
+                  placeholder={LYRICS_EXAMPLE} maxLength={LIMITS.lyrics} />
+                <Hint>Mark parts with [verse] and [chorus] on their own line. Leave it empty to try the example.</Hint>
+              </label>
+              <div className="control">
+                <span className="meta-label">Length</span>
+                <Chips label="Length" value={songLength} onChange={setSongLength}
+                  options={SONG_LENGTHS.map((s) => ({ value: s, label: `${s / 60} min` }))} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="control">
+                <span className="meta-label">Length</span>
+                <Chips label="Length" value={length} onChange={setLength}
+                  options={MUSIC_LENGTHS.map((s) => ({ value: s, label: s < 60 ? `${s} s` : `${s / 60} min` }))} />
+              </div>
+              <label className="switch">
+                <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />
+                <span className="meta-label">Loop</span>
+                <span className="hint">{loop ? 'Repeats forever without a gap, for levels and menus.' : 'Plays once, with a natural ending.'}</span>
+              </label>
+            </>
+          )}
         </>
       )}
 
@@ -156,22 +194,27 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
           <div className="control">
             <span className="meta-label">Voice</span>
             <div className="voice-pick">
-              <select className="input" value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>
-                <option value="">{DEFAULT_VOICE_LABEL}</option>
-                {voices.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              <select className="input" value={voiceId} onChange={(e) => setVoiceChoice(e.target.value)}>
+                {narrator && <option value={narrator.id}>{narrator.name}</option>}
+                <optgroup label="Presets">
+                  {PRESET_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                </optgroup>
+                {voices.some((v) => v !== narrator) && (
+                  <optgroup label="Your voices">
+                    {voices.filter((v) => v !== narrator).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </optgroup>
+                )}
+                <option value="">Built-in voice</option>
               </select>
-              <button type="button" className="button button--small button--outline" onClick={onRecordVoice}>+ Record a voice</button>
+              <button type="button" className="button button--small button--outline" onClick={() => setRecording(true)}>+ Record a voice</button>
             </div>
           </div>
-          <label className="control">
+          <div className="control">
             <span className="meta-label">Delivery</span>
-            <div className="delivery">
-              <span className="meta-label">Calm</span>
-              <input className="range" type="range" min={LIMITS.delivery[0]} max={1.25} step={0.05} value={delivery}
-                onChange={(e) => setDelivery(Number(e.target.value))} aria-label="Delivery" />
-              <span className="meta-label">Dramatic</span>
-            </div>
-          </label>
+            <Chips label="Delivery" value={delivery} onChange={setDelivery}
+              options={DELIVERY.map((d) => ({ value: d.value, label: d.label }))} />
+            <Hint>How much feeling goes into it. Dramatic works best for short, emotional lines.</Hint>
+          </div>
         </>
       )}
 
@@ -180,12 +223,13 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
 
       <details className="more-options" open={more} onToggle={(e) => setMore(e.currentTarget.open)}>
         <summary className="meta-label">More options</summary>
-        {kind === 'voice' ? (
+        {kind === 'voice' || (kind === 'music' && vocals) ? (
           <label className="control">
             <span className="meta-label">Language</span>
             <select className="input" value={language} onChange={(e) => setLanguage(e.target.value)}>
               {Object.entries(LANGUAGES).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
             </select>
+            <Hint>Write the {kind === 'voice' ? 'line' : 'lyrics'} in this language: it sets the pronunciation, it does not translate.</Hint>
           </label>
         ) : (
           <>
@@ -213,6 +257,16 @@ export function Composer({ voices, onCreated, onRecordVoice }: Props) {
           </>
         )}
       </details>
+      {recording && (
+        <VoiceRecorder
+          onClose={() => setRecording(false)}
+          onSaved={(v) => {
+            onVoiceAdded(v)
+            setVoiceChoice(v.id) // use the new voice right away
+            setRecording(false)
+          }}
+        />
+      )}
     </form>
   )
 }

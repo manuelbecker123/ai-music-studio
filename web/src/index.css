@@ -442,3 +442,29 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .modal__box { width: min(100%, 30rem); display: grid; gap: 1rem; padding: 1.5rem; background: var(--paper); border: 1px solid var(--rule-strong); }
 .modal__actions, .recorder { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .recorder audio { flex: 1; min-width: 12rem; }
+.level { flex: 1; min-width: 8rem; height: 6px; background: var(--rule); }
+.level span { display: block; height: 100%; background: var(--fg); transition: width 80ms linear; }
+.file-pick input { font: inherit; font-size: 0.8rem; color: var(--fg); max-width: 100%; }
+
+/* v3: basket, trim editor, songs */
+.header-links { display: flex; gap: 1.25rem; justify-self: end; }
+.drawer__item { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.drawer__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.icon-link.is-on { background: var(--field); color: var(--paper); border-color: var(--field); }
+.textarea--tall { min-height: 12rem; font-family: var(--mono); font-size: 0.85rem; }
+.card__lyrics { margin: 0; max-height: 9rem; overflow: auto; font-family: var(--mono); font-size: 0.72rem; line-height: 1.6;
+  color: var(--fg-muted); white-space: pre-wrap; border-left: 1px solid var(--rule); padding-left: 0.75rem; }
+.version { grid-template-columns: 4.5rem minmax(0, 1fr) auto auto auto; }
+.editor { display: grid; gap: 0.75rem; border: 1px solid var(--rule-strong); padding: 0.9rem; }
+.editor__wave { position: relative; height: 72px; }
+.editor__wave canvas { width: 100%; height: 100%; display: block; color: var(--fg); cursor: ew-resize; touch-action: none; }
+.editor__handle { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; }
+.editor__handle::after { content: ""; position: absolute; top: -2px; left: -5px; width: 12px; height: 12px; background: var(--fg); }
+.editor__fades { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.editor__fade { display: grid; gap: 0.4rem; }
+.chips--small button { min-height: 34px; padding: 0.3rem 0.7rem; }
+@media (max-width: 640px) {
+  .version { grid-template-columns: 3.5rem minmax(0, 1fr); }
+  .version > :nth-child(n+3) { grid-column: 2; justify-self: start; }
+  .header-links { flex-direction: column; gap: 0; align-items: flex-end; }
+}

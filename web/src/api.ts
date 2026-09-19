@@ -22,6 +22,10 @@ export type Take = {
   duration: number | null
   created_at: number
   completed_at: number | null
+  lyrics: string | null
+  edited: boolean
+  intensity: string | null
+  song: boolean
 }
 
 export type Voice = { id: string; name: string }
@@ -29,8 +33,11 @@ export type Voice = { id: string; name: string }
 export type NewTake =
   | { kind: 'sfx'; category: string; prompt: string; versions: 1 | 4; seconds?: number; enhance?: boolean; seed?: number }
   | { kind: 'music'; prompt: string; seconds: number; loop: boolean; enhance?: boolean; seed?: number }
+  | { kind: 'music'; vocals: true; prompt: string; lyrics: string; seconds: number; language: string }
   | { kind: 'voice'; prompt: string; voice_id?: string; delivery: number; language: string }
   | { parent_id: string; difference: number }
+  | { parent_id: string; edit: { start: number; end: number; fade_in: number; fade_out: number } }
+  | { parent_id: string; intensity: true }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`/api${path}`, init)

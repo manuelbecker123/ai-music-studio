@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api, type Take, type Voice } from './api'
+import { useBasket } from './basket'
+import { Basket } from './components/Basket'
 import { Composer } from './components/Composer'
 import { Library } from './components/Library'
 import { TakeCard } from './components/TakeCard'
-import { VoiceRecorder } from './components/VoiceRecorder'
 
 const pending = (t: Take) => t.status === 'queued' || t.status === 'in_progress'
 
@@ -13,7 +14,8 @@ export default function App() {
   const [voices, setVoices] = useState<Voice[]>([])
   const [online, setOnline] = useState<boolean | null>(null)
   const [libraryOpen, setLibraryOpen] = useState(false)
-  const [recording, setRecording] = useState(false)
+  const [basketOpen, setBasketOpen] = useState(false)
+  const basket = useBasket()
   const [now, setNow] = useState(() => Date.now())
 
   const merge = useCallback((incoming: Take[]) => {
@@ -53,9 +55,12 @@ export default function App() {
   }, [takes])
 
   const saved = takes.filter((t) => t.saved).length
+  // "Another take" for voice lines and songs: the same request again (both models sample).
   const retryVoice = async (t: Take) =>
-    merge(await api.create({ kind: 'voice', prompt: t.prompt, delivery: t.delivery ?? 0.5, language: t.language ?? 'en',
-                             ...(t.voice_id ? { voice_id: t.voice_id } : {}) }))
+    merge(await api.create(t.song
+      ? { kind: 'music', vocals: true, prompt: t.prompt, lyrics: t.lyrics ?? '', seconds: t.seconds, language: t.language ?? 'en' }
+      : { kind: 'voice', prompt: t.prompt, delivery: t.delivery ?? 0.5, language: t.language ?? 'en',
+          ...(t.voice_id ? { voice_id: t.voice_id } : {}) }))
 
   return (
     <>
@@ -68,14 +73,27 @@ export default function App() {
             Music Studio
             <span className="brand-mark__pulse" />
           </span>
-          <button type="button" className="meta-label link-button" onClick={() => setLibraryOpen(true)}>
-            Library{saved ? ` · ${saved} saved here` : ''}
-          </button>
+          <span className="header-links">
+            <button type="button" className="meta-label link-button" onClick={() => setLibraryOpen(true)}>
+              Library{saved ? ` · ${saved}` : ''}
+            </button>
+            <button type="button" className="meta-label link-button" onClick={() => setBasketOpen(true)}>
+              Basket · {basket.ids.length}
+            </button>
+          </span>
         </div>
       </header>
 
       <main className="container studio">
-        <Composer voices={voices} onCreated={merge} onRecordVoice={() => setRecording(true)} />
+        <Composer
+          voices={voices}
+          onCreated={merge}
+          onVoiceAdded={(v) => {
+            // a voice with the same name replaces the old one on the local server too
+            const same = (a: Voice) => a.name.trim().toLowerCase() === v.name.trim().toLowerCase()
+            setVoices((vs) => [...vs.filter((x) => !same(x)), v].sort((a, b) => a.name.localeCompare(b.name)))
+          }}
+        />
 
         <section className="takes" aria-label="Results">
           <div className="takes__head">
@@ -96,15 +114,7 @@ export default function App() {
       </main>
 
       {libraryOpen && <Library onClose={() => setLibraryOpen(false)} onChange={(t) => merge([t])} />}
-      {recording && (
-        <VoiceRecorder
-          onClose={() => setRecording(false)}
-          onSaved={(v) => {
-            setVoices((vs) => [...vs, v].sort((a, b) => a.name.localeCompare(b.name)))
-            setRecording(false)
-          }}
-        />
-      )}
+      {basketOpen && <Basket onClose={() => setBasketOpen(false)} />}
     </>
   )
 }

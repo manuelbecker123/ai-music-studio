@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
 import { api, fileName, fileUrl, isLoop, previewUrl, type Take } from '../api'
+import { useBasket } from '../basket'
+import { Editor } from './Editor'
 import { Player } from './Player'
 
 type Props = {
@@ -61,6 +63,37 @@ function SaveButton({ t, onChange }: { t: Take; onChange: (t: Take) => void }) {
   )
 }
 
+function BasketButton({ t }: { t: Take }) {
+  const basket = useBasket()
+  const on = basket.has(t.id)
+  return (
+    <button type="button" className={`button button--small button--outline${on ? ' is-on' : ''}`} aria-pressed={on}
+      title="Pick this sound for the next export" onClick={() => basket.toggle(t.id)}>
+      {on ? '✓ In basket' : '+ Basket'}
+    </button>
+  )
+}
+
+function Intensity({ t, onCreated }: { t: Take; onCreated: (ts: Take[]) => void }) {
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <>
+      <button type="button" className="button button--small button--outline"
+        title="A calmer version with the same tempo and length: play it while exploring and switch to this one for action"
+        onClick={async () => {
+          try {
+            onCreated(await api.create({ parent_id: t.id, intensity: true }))
+          } catch (e) {
+            setError((e as Error).message)
+          }
+        }}>
+        ⇅ Calm version
+      </button>
+      {error && <p className="error">{error}</p>}
+    </>
+  )
+}
+
 function MoreLikeThis({ t, onCreated }: { t: Take; onCreated: (ts: Take[]) => void }) {
   const [open, setOpen] = useState(false)
   const [difference, setDifference] = useState(0.4)
@@ -97,16 +130,24 @@ function MoreLikeThis({ t, onCreated }: { t: Take; onCreated: (ts: Take[]) => vo
 }
 
 function Actions({ t, onChange, onCreated, onRetryVoice }: Omit<Props, 'takes' | 'now'> & { t: Take }) {
+  const [editing, setEditing] = useState(false)
+  if (editing) return <Editor take={t} onCreated={onCreated} onClose={() => setEditing(false)} />
   return (
     <div className="card__actions">
       <a className="button button--small" href={fileUrl(t)} download={fileName(t)}
         title={t.game_ext === 'ogg' ? 'OGG file, ready for Godot' : 'WAV file, ready for Godot'}>
         ⬇ For Godot
       </a>
+      <BasketButton t={t} />
       <SaveButton t={t} onChange={onChange} />
-      {t.kind === 'voice' ? (
+      {!isLoop(t) && (
+        <button type="button" className="button button--small button--outline" onClick={() => setEditing(true)}
+          title="Cut the start or end, add fades">✂ Trim</button>
+      )}
+      {t.profile === 'music' && !t.intensity && <Intensity t={t} onCreated={onCreated} />}
+      {t.kind === 'voice' || t.song ? (
         <button type="button" className="button button--small button--outline" onClick={() => onRetryVoice(t)}
-          title="Say the same line again; every take sounds a little different">
+          title="Make it again; every take comes out a little different">
           ↻ Another take
         </button>
       ) : (
@@ -129,13 +170,14 @@ export function TakeCard({ takes, now, onChange, onCreated, onRetryVoice }: Prop
     <li className="card">
       <div className="card__head">
         <span className="meta-label">
-          {first.kind === 'sfx' ? 'Sound effect' : first.kind === 'music' ? 'Music' : 'Voice'}
-          {first.parent_id ? ' · more like this' : ''}
-          {group ? ` · ${takes.length} versions` : ''}
+          {first.kind === 'sfx' ? 'Sound effect' : first.song ? 'Song' : first.kind === 'music' ? 'Music' : 'Voice'}
+          {first.edited ? ' · trimmed' : first.intensity ? ' · intensity versions' : first.parent_id ? ' · more like this' : ''}
+          {group && !first.intensity ? ` · ${takes.length} versions` : ''}
         </span>
         {!group && <Status t={first} now={now} />}
       </div>
       <p className="card__prompt">{label}</p>
+      {first.lyrics && <pre className="card__lyrics">{first.lyrics}</pre>}
       {described(first) && described(first) !== first.prompt && (
         <p className="card__revised" title="What the model was actually told, after the prompt helper rewrote your words">
           {described(first)}
@@ -146,9 +188,10 @@ export function TakeCard({ takes, now, onChange, onCreated, onRetryVoice }: Prop
         <ul className="versions">
           {takes.map((t, i) => (
             <li key={t.id} className="version">
-              <span className="meta-label">{i + 1}</span>
-              {t.status === 'completed' ? <Player url={previewUrl(t)} loop={false} compact /> : <Status t={t} now={now} />}
+              <span className="meta-label">{t.intensity ?? i + 1}</span>
+              {t.status === 'completed' ? <Player url={previewUrl(t)} loop={isLoop(t)} compact /> : <Status t={t} now={now} />}
               <Name t={t} onChange={onChange} />
+              {t.status === 'completed' && <BasketButton t={t} />}
               {t.status === 'completed' && <SaveButton t={t} onChange={onChange} />}
               {t.error && <span className="error">{t.error.message}</span>}
             </li>
@@ -179,7 +222,7 @@ export function TakeCard({ takes, now, onChange, onCreated, onRetryVoice }: Prop
           })}>
             ⬇ All {takes.length} for Godot
           </button>
-          <MoreLikeThis t={first} onCreated={onCreated} />
+          {!first.intensity && <MoreLikeThis t={first} onCreated={onCreated} />}
         </div>
       )}
       {first.status === 'completed' && isLoop(first) && (

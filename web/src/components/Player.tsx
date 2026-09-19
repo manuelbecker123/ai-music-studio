@@ -1,30 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { audioContext, load } from '../audio'
+
 // Plays through Web Audio rather than <audio>: a decoded buffer loops with no gap at all,
 // which is the only honest way to preview a seamless loop. One sound plays at a time.
 
-let context: AudioContext | null = null
-const buffers = new Map<string, Promise<AudioBuffer>>()
 let stopCurrent: (() => void) | null = null
-
-function audioContext() {
-  context ??= new AudioContext()
-  return context
-}
-
-function load(url: string): Promise<AudioBuffer> {
-  if (!buffers.has(url)) {
-    const p = fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`could not load audio (${r.status})`)
-        return r.arrayBuffer()
-      })
-      .then((data) => audioContext().decodeAudioData(data))
-    p.catch(() => buffers.delete(url))
-    buffers.set(url, p)
-  }
-  return buffers.get(url)!
-}
 
 function peaks(buffer: AudioBuffer, bars: number): number[] {
   const data = buffer.getChannelData(0)
