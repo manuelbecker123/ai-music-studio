@@ -1,0 +1,17 @@
+# Dependencies and builds
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local configuration
+.env
+.env.local
+*.local
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
