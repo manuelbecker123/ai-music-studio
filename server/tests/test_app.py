@@ -1,4 +1,5 @@
 import copy
+import asyncio
 import time
 
 from fastapi.testclient import TestClient
@@ -192,3 +193,62 @@ def test_audio_generation_lengths_leave_room_for_loop_cutting():
     assert server.audio.generation_seconds("oneshot", 10) == 10
     assert server.audio.generation_seconds("ambience", 30) == 36
     assert server.audio.generation_seconds("music", 30) == 42
+
+
+class CapturingModels(server.LocalModels):
+    def __init__(self, settings):
+        super().__init__(settings)
+        self.graph = None
+
+    async def _run(self, graph, output_node, text_node=None):
+        self.graph = graph
+        return b"audio", "expanded prompt"
+
+    async def _upload(self, data, prefix):
+        return "uploaded-reference.flac"
+
+
+def test_stable_audio_workflow_maps_prompt_mode_and_both_seeds(tmp_path):
+    models = CapturingModels(server.Settings(data_dir=tmp_path, web_dir=None))
+    take = {
+        "prompt": "wooden click", "enhance": True, "mode": "One-shot",
+        "seed": 9, "prompt_seed": 7, "strength": None,
+    }
+    audio_bytes, revised = asyncio.run(models._stable(take, 1.5, None))
+    graph = models.graph
+    assert audio_bytes == b"audio" and revised == "expanded prompt"
+    assert graph["52:31"]["inputs"]["value"] == "wooden click"
+    assert graph["52:36"]["inputs"]["value"] == 1.5
+    assert graph["52:43"]["inputs"]["choice"] == "One-shot"
+    assert graph["52:43"]["inputs"]["index"] == 3
+    assert graph["52:3"]["inputs"]["seed"] == 9
+    assert graph["52:28"]["inputs"]["sampling_mode.seed"] == 7
+
+
+def test_reference_audio_selects_the_remix_workflow(tmp_path):
+    models = CapturingModels(server.Settings(data_dir=tmp_path, web_dir=None))
+    take = {
+        "prompt": "calmer", "enhance": False, "mode": "Music",
+        "seed": 3, "prompt_seed": 3, "strength": 0.8,
+    }
+    asyncio.run(models._stable(take, 30, b"reference"))
+    assert models.graph["92"]["inputs"]["audio"] == "uploaded-reference.flac"
+    assert models.graph["52:3"]["inputs"]["denoise"] == 0.8
+
+
+def test_song_workflow_maps_lyrics_language_and_duration(tmp_path):
+    models = CapturingModels(server.Settings(data_dir=tmp_path, web_dir=None))
+    take = {
+        "prompt": "folk song in D minor, 84 BPM", "seconds": 60,
+        "seed": 11, "language": "en", "strength": None,
+        "options": {"engine": "song", "lyrics": "[verse]\nSail away"},
+    }
+    asyncio.run(models._song(take, None))
+    graph = models.graph
+    assert graph["94"]["inputs"]["tags"] == take["prompt"]
+    assert graph["94"]["inputs"]["lyrics"] == "[verse]\nSail away"
+    assert graph["94"]["inputs"]["language"] == "en"
+    assert graph["94"]["inputs"]["duration"] == 60
+    assert graph["94"]["inputs"]["bpm"] == 84
+    assert graph["94"]["inputs"]["keyscale"] == "D minor"
+    assert graph["109"]["inputs"]["value"] == 11
