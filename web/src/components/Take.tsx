@@ -5,7 +5,7 @@ export type Track = Job & { prompt: string; url?: string; startedAt: number; too
 function statusLabel(t: Track, now: number) {
   if (t.status === 'completed') return `Done in ${((t.tookMs ?? 0) / 1000).toFixed(1)} s`
   if (t.status === 'failed') return 'Failed'
-  const elapsed = ((now - t.startedAt) / 1000).toFixed(0)
+  const elapsed = Math.max(0, (now - t.startedAt) / 1000).toFixed(0)
   return `${t.status === 'queued' ? 'Queued' : 'Generating'} · ${elapsed} s`
 }
 
