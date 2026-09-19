@@ -1,154 +1,194 @@
-import json
+import copy
 import time
 
-import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 import app as server
 
 
-class FakeComfy:
-    """Answers the ComfyUI endpoints the server uses."""
+class FakeEngine:
+    def __init__(self):
+        self.rendered = []
+        self.voices = {}
 
-    def __init__(self, outcome="success", models=None):
-        self.outcome = outcome
-        self.models = models if models is not None else server.REQUIRED_MODELS
-        self.graphs = []
+    async def online(self):
+        return True
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path == "/prompt":
-            self.graphs.append(json.loads(request.content)["prompt"])
-            return httpx.Response(200, json={"prompt_id": f"p{len(self.graphs)}"})
-        if path.startswith("/history/"):
-            pid = path.rsplit("/", 1)[1]
-            if self.outcome == "pending":
-                return httpx.Response(200, json={})
-            if self.outcome == "error":
-                status = {"status_str": "error", "completed": False,
-                          "messages": [["execution_error", {"exception_message": "out of memory"}]]}
-                return httpx.Response(200, json={pid: {"status": status, "outputs": {}}})
-            outputs = {server.OUTPUT_NODE: {"audio": [{"filename": "a.mp3", "subfolder": "", "type": "output"}]},
-                       server.PROMPT_NODE: {"text": ["an enhanced prompt"]}}
-            return httpx.Response(200, json={pid: {"status": {"status_str": "success", "completed": True},
-                                                   "outputs": outputs}})
-        if path == "/view":
-            return httpx.Response(200, content=b"ID3-fake-mp3")
-        if path.startswith("/models/"):
-            return httpx.Response(200, json=self.models.get(path.rsplit("/", 1)[1], []))
-        return httpx.Response(404)
+    async def render(self, take, parent, store):
+        self.rendered.append((copy.deepcopy(take), copy.deepcopy(parent)))
+        extension = "ogg" if take["profile"] in ("music", "ambience", "track") else "wav"
+        return server.Rendered(
+            preview=b"fake-flac",
+            game=b"fake-game",
+            game_ext=extension,
+            duration=take["seconds"] or 1.25,
+            revised_prompt=f"Detailed {take['prompt']}",
+            source=None if take["kind"] == "voice" else b"fake-source",
+            loop_cut={"start": 10, "length": 100, "fade": 5}
+            if take["profile"] in ("music", "ambience")
+            else None,
+        )
+
+    async def prepare_voice(self, voice_id, data, suffix):
+        self.voices[voice_id] = data
+
+    async def delete_voice(self, voice_id):
+        self.voices.pop(voice_id, None)
 
 
-@pytest.fixture(autouse=True)
-def fast_poll(monkeypatch):
-    monkeypatch.setattr(server, "POLL_SECONDS", 0.01)
+def client(tmp_path):
+    engine = FakeEngine()
+    settings = server.Settings(data_dir=tmp_path, web_dir=None)
+    return TestClient(server.create_app(settings, engine)), engine
 
 
-def client(fake: FakeComfy) -> TestClient:
-    app = server.create_app(server.Settings(web_dir=None), transport=httpx.MockTransport(fake))
-    return TestClient(app)
-
-
-def wait(c: TestClient, jid: str) -> dict:
+def wait(client, take_id):
     for _ in range(200):
-        job = c.get(f"/api/v1/audio/generations/{jid}").json()
-        if job["status"] in ("completed", "failed"):
-            return job
-        time.sleep(0.01)
-    raise AssertionError("job did not finish")
+        take = client.get(f"/api/takes/{take_id}").json()
+        if take["status"] in ("completed", "failed"):
+            return take
+        time.sleep(0.005)
+    raise AssertionError("take did not finish")
 
 
-# ---------------------------------------------------------------- workflow
-
-def test_build_graph_fills_every_mapped_input():
-    req = server.GenerationRequest(prompt="warm pads", seconds=12, mode="sfx", enhance=True, seed=42)
-    graph = server.build_graph(req, 42)
-    assert graph["52:31"]["inputs"]["value"] == "warm pads"
-    assert graph["52:36"]["inputs"]["value"] == 12
-    assert graph["52:43"]["inputs"]["choice"] == "SFX"
-    assert graph["52:43"]["inputs"]["index"] == 2
-    assert graph["52:3"]["inputs"]["seed"] == graph["52:28"]["inputs"]["sampling_mode.seed"] == 42
+def create_and_wait(client, body):
+    created = client.post("/api/takes", json=body)
+    assert created.status_code == 200, created.text
+    takes = created.json()["takes"]
+    return [wait(client, take["id"]) for take in takes]
 
 
-def test_build_graph_leaves_the_template_untouched():
-    server.build_graph(server.GenerationRequest(prompt="x"), 1)
-    assert server.WORKFLOW["52:31"]["inputs"]["value"] != "x"
+def test_sound_effect_versions_are_grouped_and_game_ready(tmp_path):
+    with client(tmp_path)[0] as api:
+        takes = create_and_wait(api, {
+            "kind": "sfx",
+            "category": "footsteps",
+            "prompt": "Heavy boots on wet gravel",
+            "versions": 4,
+            "seed": 20,
+        })
+        assert len(takes) == 4
+        assert {take["group_id"] for take in takes} == {takes[0]["group_id"]}
+        assert [take["seed"] for take in takes] == [20, 21, 22, 23]
+        assert all(take["game_ext"] == "wav" for take in takes)
+        preview = api.get(f"/api/takes/{takes[0]['id']}/preview")
+        game = api.get(f"/api/takes/{takes[0]['id']}/file")
+    assert preview.content == b"fake-flac"
+    assert game.content == b"fake-game"
+    assert 'filename="sfx_footsteps_01.wav"' in game.headers["content-disposition"]
 
 
-def test_raw_prompt_gets_a_length_tag_once():
-    raw = server.GenerationRequest(prompt="door slam.", seconds=2, enhance=False)
-    assert server.build_graph(raw, 1)["52:31"]["inputs"]["value"] == "door slam. Length: 2 seconds"
-    tagged = server.GenerationRequest(prompt="door slam. Length: 3 seconds", seconds=2, enhance=False)
-    assert server.build_graph(tagged, 1)["52:31"]["inputs"]["value"].count("Length:") == 1
+def test_music_loop_can_be_saved_renamed_and_made_calm(tmp_path):
+    api, _ = client(tmp_path)
+    with api:
+        take = create_and_wait(api, {
+            "kind": "music", "prompt": "Dark forest at 90 BPM",
+            "seconds": 30, "loop": True,
+        })[0]
+        assert take["profile"] == "music"
+        assert take["game_ext"] == "ogg"
+        changed = api.patch(
+            f"/api/takes/{take['id']}",
+            json={"name": "forest exploration", "saved": True},
+        ).json()
+        assert changed["name"] == "forest_exploration"
+        assert api.get("/api/library").json()["takes"][0]["id"] == take["id"]
+        calm = create_and_wait(
+            api, {"parent_id": take["id"], "intensity": True}
+        )[0]
+    assert calm["intensity"] == "Calm"
+    assert calm["parent_id"] == take["id"]
 
 
-# ---------------------------------------------------------------- API
-
-@pytest.mark.parametrize("body, field", [
-    ({}, "prompt"),
-    ({"prompt": "   "}, "prompt"),
-    ({"prompt": "x", "seconds": 999}, "seconds"),
-    ({"prompt": "x", "mode": "rap"}, "mode"),
-    ({"prompt": "x", "enhance": "yes"}, "enhance"),
-    ({"prompt": "x", "seed": -1}, "seed"),
-])
-def test_invalid_requests_are_rejected(body, field):
-    with client(FakeComfy()) as c:
-        r = c.post("/api/v1/audio/generations", json=body)
-    assert r.status_code == 400
-    assert r.json()["detail"].startswith(field)
-
-
-def test_job_lifecycle():
-    fake = FakeComfy()
-    with client(fake) as c:
-        job = c.post("/api/v1/audio/generations", json={"prompt": "lofi loop", "seconds": 8, "seed": 7}).json()
-        assert job["status"] == "queued" and job["seed"] == 7
-        done = wait(c, job["id"])
-        assert done["status"] == "completed"
-        assert done["revised_prompt"] == "an enhanced prompt"
-        audio = c.get(f"/api/v1/audio/generations/{job['id']}/content")
-    assert audio.status_code == 200
-    assert audio.headers["content-type"] == "audio/mpeg"
-    assert audio.content == b"ID3-fake-mp3"
-    assert fake.graphs[0]["52:31"]["inputs"]["value"] == "lofi loop"
+def test_songs_keep_lyrics_and_voice_translation_choice(tmp_path):
+    api, engine = client(tmp_path)
+    with api:
+        song = create_and_wait(api, {
+            "kind": "music", "vocals": True, "prompt": "Cheerful folk song",
+            "lyrics": "[verse]\nHello", "seconds": 60, "language": "en",
+        })[0]
+        voice = create_and_wait(api, {
+            "kind": "voice", "prompt": "The bridge is out.",
+            "voice_id": "preset_warm_narrator", "delivery": 0.8,
+            "language": "en", "translate_to": "fr",
+        })[0]
+    assert song["song"] is True
+    assert song["lyrics"] == "[verse]\nHello"
+    assert voice["translate_to"] == "fr"
+    assert voice["language"] == "fr"
+    assert engine.rendered[-1][0]["voice_id"] == "preset_warm_narrator"
 
 
-def test_failed_workflow_is_reported():
-    with client(FakeComfy(outcome="error")) as c:
-        job = c.post("/api/v1/audio/generations", json={"prompt": "x"}).json()
-        done = wait(c, job["id"])
-        content = c.get(f"/api/v1/audio/generations/{job['id']}/content")
-    assert done["status"] == "failed"
-    assert "out of memory" in done["error"]["message"]
-    assert content.status_code == 409
+def test_refine_and_trim_inherit_the_original(tmp_path):
+    api, engine = client(tmp_path)
+    with api:
+        original = create_and_wait(api, {
+            "kind": "sfx", "category": "hit", "prompt": "Sword on shield",
+            "versions": 1,
+        })[0]
+        refined = create_and_wait(api, {
+            "parent_id": original["id"], "difference": 0.7,
+            "direction": "more metallic",
+        })[0]
+        trimmed = create_and_wait(api, {
+            "parent_id": original["id"],
+            "edit": {"start": 0, "end": 1, "fade_in": 0.05, "fade_out": 0.1},
+        })[0]
+    assert refined["parent_id"] == original["id"]
+    assert "more metallic" in refined["prompt"]
+    assert trimmed["edited"] is True
+    assert engine.rendered[-1][1]["id"] == original["id"]
 
 
-def test_queue_is_capped():
-    with client(FakeComfy(outcome="pending")) as c:
-        codes = [c.post("/api/v1/audio/generations", json={"prompt": "x"}).status_code
-                 for _ in range(server.MAX_PENDING + 1)]
-    assert codes[:-1] == [200] * server.MAX_PENDING
-    assert codes[-1] == 429
+def test_recorded_voices_can_be_replaced_and_deleted(tmp_path):
+    api, engine = client(tmp_path)
+    with api:
+        first = api.post(
+            "/api/voices",
+            data={"name": "Narrator"},
+            files={"audio": ("voice.wav", b"one", "audio/wav")},
+        )
+        assert first.status_code == 200
+        second = api.post(
+            "/api/voices",
+            data={"name": "Narrator"},
+            files={"audio": ("voice.wav", b"two", "audio/wav")},
+        )
+        voices = api.get("/api/voices").json()["voices"]
+        assert len(voices) == 1
+        voice_id = second.json()["id"]
+        assert api.delete(f"/api/voices/{voice_id}").json() == {"ok": True}
+    assert engine.voices == {}
 
 
-def test_unknown_job_is_404():
-    with client(FakeComfy()) as c:
-        assert c.get("/api/v1/audio/generations/audio_nope").status_code == 404
+def test_delete_removes_metadata_and_files(tmp_path):
+    api, _ = client(tmp_path)
+    with api:
+        take = create_and_wait(api, {
+            "kind": "sfx", "category": "ui", "prompt": "Soft click",
+            "versions": 1,
+        })[0]
+        assert api.delete(f"/api/takes/{take['id']}").status_code == 200
+        assert api.get(f"/api/takes/{take['id']}").status_code == 404
+    assert not (tmp_path / "takes" / take["id"]).exists()
 
 
-def test_health_reports_missing_models():
-    with client(FakeComfy(models={"checkpoints": []})) as c:
-        health = c.get("/api/health").json()
-    assert health["comfyui"] is True
-    assert "checkpoints/stable_audio_3_medium.safetensors" in health["missing_models"]
+def test_invalid_requests_are_rejected(tmp_path):
+    api, _ = client(tmp_path)
+    with api:
+        assert api.post("/api/takes", json={}).status_code == 400
+        assert api.post("/api/takes", json={
+            "kind": "sfx", "category": "unknown", "prompt": "x", "versions": 1,
+        }).status_code == 400
+        assert api.post("/api/takes", json={
+            "kind": "music", "prompt": "x", "seconds": 999, "loop": True,
+        }).status_code == 400
+        assert api.post("/api/takes", json={
+            "kind": "voice", "prompt": "x", "language": "klingon",
+        }).status_code == 400
 
 
-def test_health_when_comfyui_is_down():
-    def down(request):
-        raise httpx.ConnectError("refused")
-
-    app = server.create_app(server.Settings(web_dir=None), transport=httpx.MockTransport(down))
-    with TestClient(app) as c:
-        assert c.get("/api/health").json() == {"comfyui": False, "missing_models": []}
+def test_audio_generation_lengths_leave_room_for_loop_cutting():
+    assert server.audio.generation_seconds("oneshot", 10) == 10
+    assert server.audio.generation_seconds("ambience", 30) == 36
+    assert server.audio.generation_seconds("music", 30) == 42

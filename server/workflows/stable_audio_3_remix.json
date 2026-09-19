@@ -40,19 +40,6 @@
    "title": "VAE Decode Audio"
   }
  },
- "52:11": {
-  "inputs": {
-   "seconds": [
-    "52:36",
-    0
-   ],
-   "batch_size": 1
-  },
-  "class_type": "EmptyLatentAudio",
-  "_meta": {
-   "title": "Empty Latent Audio"
-  }
- },
  "52:3": {
   "inputs": {
    "seed": 1038503484137406,
@@ -74,7 +61,7 @@
     0
    ],
    "latent_image": [
-    "52:11",
+    "94",
     0
    ]
   },
@@ -315,6 +302,48 @@
   },
   "_meta": {
    "title": "Prompt used (bridge reads this)"
+  }
+ },
+ "92": {
+  "class_type": "LoadAudio",
+  "inputs": {
+   "audio": ""
+  },
+  "_meta": {
+   "title": "Reference audio (bridge fills)"
+  }
+ },
+ "93": {
+  "class_type": "TrimAudioDuration",
+  "inputs": {
+   "audio": [
+    "92",
+    0
+   ],
+   "start_index": 0,
+   "duration": [
+    "52:36",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "Trim to length"
+  }
+ },
+ "94": {
+  "class_type": "VAEEncodeAudio",
+  "inputs": {
+   "audio": [
+    "93",
+    0
+   ],
+   "vae": [
+    "52:25",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "Encode reference"
   }
  }
 }

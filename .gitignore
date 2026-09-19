@@ -5,6 +5,7 @@ dist/
 __pycache__/
 *.pyc
 .pytest_cache/
+server/data/
 
 # Local configuration
 .env
