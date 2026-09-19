@@ -20,6 +20,7 @@ type Props = {
   voices: Voice[]
   onCreated: (ts: Take[]) => void
   onVoiceAdded: (v: Voice) => void
+  onVoiceDeleted: (id: string) => void
 }
 
 function Chips<T extends string | number>({ options, value, onChange, label }: {
@@ -40,7 +41,7 @@ function Hint({ children }: { children: React.ReactNode }) {
   return <p className="hint">{children}</p>
 }
 
-export function Composer({ voices, onCreated, onVoiceAdded }: Props) {
+export function Composer({ voices, onCreated, onVoiceAdded, onVoiceDeleted }: Props) {
   const [kind, setKind] = useState<Kind>('sfx')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +67,21 @@ export function Composer({ voices, onCreated, onVoiceAdded }: Props) {
   const narrator = voices.find((v) => v.name.trim().toLowerCase() === DEFAULT_VOICE_LABEL.toLowerCase())
   const voiceId = voiceChoice ?? narrator?.id ?? PRESET_VOICES[0].id
   const [recording, setRecording] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const recorded = voices.find((v) => v.id === voiceId)
+
+  async function deleteVoice() {
+    if (!recorded) return
+    try {
+      await api.deleteVoice(recorded.id)
+      onVoiceDeleted(recorded.id)
+      setVoiceChoice(null)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setConfirmDelete(false)
+    }
+  }
   const [delivery, setDelivery] = useState(0.5)
   const [language, setLanguage] = useState('en')
   // shared "more options"
@@ -194,7 +210,7 @@ export function Composer({ voices, onCreated, onVoiceAdded }: Props) {
           <div className="control">
             <span className="meta-label">Voice</span>
             <div className="voice-pick">
-              <select className="input" value={voiceId} onChange={(e) => setVoiceChoice(e.target.value)}>
+              <select className="input" value={voiceId} onChange={(e) => { setVoiceChoice(e.target.value); setConfirmDelete(false) }}>
                 {narrator && <option value={narrator.id}>{narrator.name}</option>}
                 <optgroup label="Presets">
                   {PRESET_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
@@ -206,8 +222,25 @@ export function Composer({ voices, onCreated, onVoiceAdded }: Props) {
                 )}
                 <option value="">Built-in voice</option>
               </select>
-              <button type="button" className="button button--small button--outline" onClick={() => setRecording(true)}>+ Record a voice</button>
+              <button type="button" className="button button--small button--outline" onClick={() => setRecording(true)}>Record a voice</button>
             </div>
+            {recorded && !confirmDelete && (
+              <button type="button" className="link-button meta-label delete-link" onClick={() => setConfirmDelete(true)}>
+                Delete the “{recorded.name}” recording
+              </button>
+            )}
+            {recorded && confirmDelete && (
+              <div className="confirm" role="alertdialog" aria-label="Delete voice">
+                <p className="hint">
+                  Delete “{recorded.name}” for good? The recording and local model copy are erased. Sounds
+                  already made with it are kept.
+                </p>
+                <div className="card__actions">
+                  <button type="button" className="button button--small" onClick={deleteVoice}>Delete permanently</button>
+                  <button type="button" className="button button--small button--outline" onClick={() => setConfirmDelete(false)}>Keep it</button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="control">
             <span className="meta-label">Delivery</span>

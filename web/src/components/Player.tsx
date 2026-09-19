@@ -121,7 +121,7 @@ export function Player({ url, loop, compact = false }: { url: string; loop: bool
         disabled={!buffer}
         onClick={() => (playing ? stop() : play(position >= 0.999 ? 0 : position))}
       >
-        {playing ? '■' : '▶'}
+        <span className={playing ? 'icon-stop' : 'icon-play'} aria-hidden />
       </button>
       {error ? (
         <span className="meta-label">Audio unavailable</span>
@@ -130,7 +130,7 @@ export function Player({ url, loop, compact = false }: { url: string; loop: bool
       )}
       {!compact && buffer && (
         <span className="meta-label player__time">
-          {loop ? '∞ ' : ''}
+          {loop ? 'Loop · ' : ''}
           {time(buffer.duration)}
         </span>
       )}

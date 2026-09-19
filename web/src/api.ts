@@ -35,7 +35,8 @@ export type NewTake =
   | { kind: 'music'; prompt: string; seconds: number; loop: boolean; enhance?: boolean; seed?: number }
   | { kind: 'music'; vocals: true; prompt: string; lyrics: string; seconds: number; language: string }
   | { kind: 'voice'; prompt: string; voice_id?: string; delivery: number; language: string }
-  | { parent_id: string; difference: number }
+  | { parent_id: string; difference: number; direction?: string }
+  | { parent_id: string; line: string; delivery: number }
   | { parent_id: string; edit: { start: number; end: number; fade_in: number; fade_out: number } }
   | { parent_id: string; intensity: true }
 
@@ -61,6 +62,7 @@ export const api = {
   take: (id: string) => request<Take>(`/takes/${id}`),
   create: (body: NewTake) => request<{ takes: Take[] }>('/takes', jsonBody('POST', body)).then((r) => r.takes),
   update: (id: string, body: { name?: string; saved?: boolean }) => request<Take>(`/takes/${id}`, jsonBody('PATCH', body)),
+  remove: (id: string) => request<{ ok: true }>(`/takes/${id}`, { method: 'DELETE' }),
   voices: () => request<{ voices: Voice[] }>('/voices').then((r) => r.voices),
   addVoice: (name: string, audio: Blob) => {
     const form = new FormData()

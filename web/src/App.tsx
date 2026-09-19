@@ -55,6 +55,7 @@ export default function App() {
   }, [takes])
 
   const saved = takes.filter((t) => t.saved).length
+  const removeTakes = (ids: string[]) => setTakes((ts) => ts.filter((t) => !ids.includes(t.id)))
   // "Another take" for voice lines and songs: the same request again (both models sample).
   const retryVoice = async (t: Take) =>
     merge(await api.create(t.song
@@ -93,6 +94,7 @@ export default function App() {
             const same = (a: Voice) => a.name.trim().toLowerCase() === v.name.trim().toLowerCase()
             setVoices((vs) => [...vs.filter((x) => !same(x)), v].sort((a, b) => a.name.localeCompare(b.name)))
           }}
+          onVoiceDeleted={(id) => setVoices((vs) => vs.filter((v) => v.id !== id))}
         />
 
         <section className="takes" aria-label="Results">
@@ -107,13 +109,14 @@ export default function App() {
           )}
           <ul className="takes__list">
             {groups.map((g) => (
-              <TakeCard key={g[0].group_id} takes={g} now={now} onChange={(t) => merge([t])} onCreated={merge} onRetryVoice={retryVoice} />
+              <TakeCard key={g[0].group_id} takes={g} now={now} onChange={(t) => merge([t])} onCreated={merge}
+                onRetryVoice={retryVoice} onDeleted={removeTakes} />
             ))}
           </ul>
         </section>
       </main>
 
-      {libraryOpen && <Library onClose={() => setLibraryOpen(false)} onChange={(t) => merge([t])} />}
+      {libraryOpen && <Library onClose={() => setLibraryOpen(false)} onChange={(t) => merge([t])} onDeleted={removeTakes} />}
       {basketOpen && <Basket onClose={() => setBasketOpen(false)} />}
     </>
   )

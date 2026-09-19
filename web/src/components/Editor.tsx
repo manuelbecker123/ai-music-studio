@@ -103,7 +103,7 @@ export function Editor({ take, onCreated, onClose }: { take: Take; onCreated: (t
         <span className="editor__handle" style={{ left: `${range[0] * 100}%` }} />
         <span className="editor__handle" style={{ left: `${range[1] * 100}%` }} />
       </div>
-      <p className="meta-label">{fmt(range[0] * d)} → {fmt(range[1] * d)} · keeps {fmt((range[1] - range[0]) * d)}</p>
+      <p className="meta-label">{fmt(range[0] * d)} to {fmt(range[1] * d)} · keeps {fmt((range[1] - range[0]) * d)}</p>
       <div className="editor__fades">
         {([['Fade in', fadeIn, setFadeIn], ['Fade out', fadeOut, setFadeOut]] as const).map(([label, value, set]) => (
           <div key={label} className="editor__fade">
@@ -118,7 +118,7 @@ export function Editor({ take, onCreated, onClose }: { take: Take; onCreated: (t
       </div>
       {error && <p className="error">{error}</p>}
       <div className="card__actions">
-        <button type="button" className="button button--small button--outline" onClick={play} disabled={!buffer}>▶ Play selection</button>
+        <button type="button" className="button button--small button--outline" onClick={play} disabled={!buffer}>Play selection</button>
         <button type="button" className="button button--small" onClick={save} disabled={!buffer || saving}>{saving ? 'Saving…' : 'Save trimmed copy'}</button>
         <button type="button" className="button button--small button--outline" onClick={onClose}>Cancel</button>
       </div>

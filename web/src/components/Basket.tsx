@@ -46,21 +46,21 @@ export function Basket({ onClose }: { onClose: () => void }) {
         <button type="button" className="button button--small button--outline" onClick={onClose}>Close</button>
       </div>
       <p className="hint">
-        The sounds you picked with + Basket. Export makes a zip with one folder per sound, holding the
+        The sounds you picked with Add to basket. Export makes a zip with one folder per sound, holding the
         Godot file and a .json describing it (e.g. sfx/footsteps_01/footsteps_01.wav and footsteps_01.json).
       </p>
       <button type="button" className="button button--wide" disabled={!takes?.length || progress !== null} onClick={download}>
-        {progress !== null ? `Packing ${progress}/${takes?.length}…` : `⬇ Export ${takes?.length ?? 0} as .zip`}
+        {progress !== null ? `Packing ${progress}/${takes?.length}…` : `Export ${takes?.length ?? 0} as .zip`}
       </button>
       {error && <p className="error">{error}</p>}
-      {takes && !takes.length && <p className="hint">Empty. Press + Basket on any sound to add it.</p>}
+      {takes && !takes.length && <p className="hint">Empty. Press Add to basket on any sound to add it.</p>}
       <ul className="drawer__list">
         {takes?.map((t) => (
           <li key={t.id} className="drawer__item">
             <Player url={previewUrl(t)} loop={isLoop(t)} compact />
             <span className="drawer__name">{t.kind}/{t.name}/{fileName(t)}</span>
             <span />
-            <button type="button" className="icon-link" onClick={() => basket.remove(t.id)} title="Remove from the basket">✕</button>
+            <button type="button" className="icon-link" onClick={() => basket.remove(t.id)} title="Remove from the basket">Remove</button>
           </li>
         ))}
       </ul>

@@ -133,9 +133,9 @@ export function VoiceRecorder({ onSaved, onClose }: { onSaved: (v: Voice) => voi
         </label>
         <div className="recorder">
           {recording ? (
-            <button type="button" className="button" onClick={() => finish(true)}>■ Stop · {Math.floor(seconds)} s</button>
+            <button type="button" className="button" onClick={() => finish(true)}>Stop · {Math.floor(seconds)} s</button>
           ) : (
-            <button type="button" className="button button--outline" onClick={start}>● {clip ? 'Record again' : 'Record'}</button>
+            <button type="button" className="button button--outline" onClick={start}>{clip ? 'Record again' : 'Record'}</button>
           )}
           {recording && <span className="level" aria-hidden><span style={{ width: `${level * 100}%` }} /></span>}
           {clipUrl && !recording && <audio controls src={clipUrl} />}
