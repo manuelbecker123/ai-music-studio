@@ -6,8 +6,9 @@ on your own machine through [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 
 ![Music Studio](docs/screenshot.png)
 
-**Sample:** [docs/sample.mp3](docs/sample.mp3). This is 20 seconds of *"Warm lofi hip hop loop,
-dusty rhodes chords, soft vinyl crackle, laid-back drums, 80 BPM"* in Music mode with seed 2026.
+**Sample:** [docs/sample.mp3](docs/sample.mp3). This is 20 seconds of *"Tropical house track with
+marimba, steel drums, soft synths, smooth bass, layered percussion, and light piano riffs for sunny
+chill dance vibes"* in Music mode with seed 42.
 
 ## How it works
 
