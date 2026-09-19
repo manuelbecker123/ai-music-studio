@@ -41,6 +41,7 @@ MAX_PROMPT = 2000
 MAX_PENDING = 8
 KEEP_SECONDS = 3600
 JOB_TIMEOUT = 3600  # includes time spent waiting behind other ComfyUI jobs
+POLL_SECONDS = 1.0
 
 # Where each request field goes in the workflow: [(node id, input name), ...]
 NODES = {
@@ -179,7 +180,7 @@ class Comfy:
         await self._request("POST", "/free", json={"unload_models": True, "free_memory": True})
 
 
-async def run_job(comfy: Comfy, job: Job, poll: float = 1.0) -> None:
+async def run_job(comfy: Comfy, job: Job) -> None:
     """Runs one job on ComfyUI and stores the result on the job."""
     prompt_id = await comfy.submit(build_graph(job.request, job.seed))
     job.status = "in_progress"
@@ -200,7 +201,7 @@ async def run_job(comfy: Comfy, job: Job, poll: float = 1.0) -> None:
             job.revised_prompt = text[0] if isinstance(text, list) and text else None
             job.audio = await comfy.fetch(files[0])
             return
-        await asyncio.sleep(poll)
+        await asyncio.sleep(POLL_SECONDS)
     raise ComfyError("workflow timed out")
 
 
