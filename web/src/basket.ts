@@ -65,7 +65,11 @@ export function metadata(t: Take) {
     lyrics: t.lyrics,
     voice,
     delivery: t.delivery == null ? null : DELIVERY.reduce((a, b) => (Math.abs(b.value - t.delivery!) < Math.abs(a.value - t.delivery!) ? b : a)).label,
-    language: t.language ? LANGUAGES[t.language] ?? t.language : null,
+    // voice: the spoken language is only known when the line was translated
+    language: t.translate_to ? LANGUAGES[t.translate_to] : t.kind === 'voice' ? null : t.language ? LANGUAGES[t.language] ?? t.language : null,
+    accent: t.kind === 'voice' && !t.translate_to && t.language && t.language !== 'en' ? `${LANGUAGES[t.language]} accent` : null,
+    spoken_text: t.kind === 'voice' ? (t.translate_to ? t.revised_prompt : t.prompt) : null,
+    translated_from: t.translate_to ? t.prompt : null,
     intensity: t.intensity,
     trimmed: t.edited,
     duration_seconds: t.duration,

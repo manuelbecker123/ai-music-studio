@@ -26,6 +26,7 @@ export type Take = {
   edited: boolean
   intensity: string | null
   song: boolean
+  translate_to: string | null
 }
 
 export type Voice = { id: string; name: string }
@@ -34,7 +35,7 @@ export type NewTake =
   | { kind: 'sfx'; category: string; prompt: string; versions: 1 | 4; seconds?: number; enhance?: boolean; seed?: number }
   | { kind: 'music'; prompt: string; seconds: number; loop: boolean; enhance?: boolean; seed?: number }
   | { kind: 'music'; vocals: true; prompt: string; lyrics: string; seconds: number; language: string }
-  | { kind: 'voice'; prompt: string; voice_id?: string; delivery: number; language: string }
+  | { kind: 'voice'; prompt: string; voice_id?: string; delivery: number; language: string; translate_to?: string }
   | { parent_id: string; difference: number; direction?: string }
   | { parent_id: string; line: string; delivery: number }
   | { parent_id: string; edit: { start: number; end: number; fade_in: number; fade_out: number } }

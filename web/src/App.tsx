@@ -61,7 +61,7 @@ export default function App() {
     merge(await api.create(t.song
       ? { kind: 'music', vocals: true, prompt: t.prompt, lyrics: t.lyrics ?? '', seconds: t.seconds, language: t.language ?? 'en' }
       : { kind: 'voice', prompt: t.prompt, delivery: t.delivery ?? 0.5, language: t.language ?? 'en',
-          ...(t.voice_id ? { voice_id: t.voice_id } : {}) }))
+          ...(t.voice_id ? { voice_id: t.voice_id } : {}), ...(t.translate_to ? { translate_to: t.translate_to } : {}) }))
 
   return (
     <>

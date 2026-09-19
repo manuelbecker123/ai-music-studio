@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { api, fileName, fileUrl, isLoop, previewUrl, type Take } from '../api'
 import { useBasket } from '../basket'
-import { DELIVERY } from '../catalog'
+import { DELIVERY, LANGUAGES } from '../catalog'
 import { DeleteButton } from './DeleteButton'
 import { Editor } from './Editor'
 import { Player } from './Player'
@@ -233,7 +233,9 @@ export function TakeCard({ takes, now, onChange, onCreated, onRetryVoice, onDele
       </div>
       <p className="card__prompt">{label}</p>
       {first.lyrics && <pre className="card__lyrics">{first.lyrics}</pre>}
-      {described(first) && described(first) !== first.prompt && (
+      {first.kind === 'voice' && first.translate_to && first.revised_prompt ? (
+        <p className="card__revised">Spoken in {LANGUAGES[first.translate_to]}: “{first.revised_prompt}”</p>
+      ) : described(first) && described(first) !== first.prompt && (
         <p className="card__revised" title="What the model was actually told, after the prompt helper rewrote your words">
           {described(first)}
         </p>

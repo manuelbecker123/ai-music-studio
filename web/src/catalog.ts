@@ -76,6 +76,11 @@ export const LANGUAGES: Record<string, string> = {
   sw: 'Swahili', tr: 'Turkish', zh: 'Chinese',
 }
 
+/** Chatterbox's language setting only changes pronunciation: English text with "fr" comes out
+ * with a French accent. So it is offered as an accent; real other-language speech goes through
+ * translation (music-agent translates the line, then speaks it natively). */
+export const accentLabel = (code: string) => (code === 'en' ? 'None' : `${LANGUAGES[code]} accent`)
+
 export const LIMITS = {
   prompt: 2000,
   line: 500,

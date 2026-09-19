@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { api, type NewTake, type Take, type Voice } from '../api'
 import { VoiceRecorder } from './VoiceRecorder'
 import {
-  DEFAULT_VOICE_LABEL, DELIVERY, LANGUAGES, LIMITS, LYRICS_EXAMPLE, MUSIC_EXAMPLE, MUSIC_LENGTHS, PRESET_VOICES,
+  DEFAULT_VOICE_LABEL, DELIVERY, LANGUAGES, accentLabel, LIMITS, LYRICS_EXAMPLE, MUSIC_EXAMPLE, MUSIC_LENGTHS, PRESET_VOICES,
   SFX_CATEGORIES, VOICE_EXAMPLE, sfxCategory, type Kind,
 } from '../catalog'
 
@@ -83,7 +83,8 @@ export function Composer({ voices, onCreated, onVoiceAdded, onVoiceDeleted }: Pr
     }
   }
   const [delivery, setDelivery] = useState(0.5)
-  const [language, setLanguage] = useState('en')
+  const [language, setLanguage] = useState('en') // voice: the accent; songs: the lyrics' language
+  const [translateTo, setTranslateTo] = useState('')
   // shared "more options"
   const [exactWords, setExactWords] = useState(false)
   const [seed, setSeed] = useState('')
@@ -104,7 +105,8 @@ export function Composer({ voices, onCreated, onVoiceAdded, onVoiceDeleted }: Pr
     } else if (kind === 'music') {
       body = { kind, prompt: musicPrompt || MUSIC_EXAMPLE, seconds: length, loop, ...shared }
     } else {
-      body = { kind, prompt: line || VOICE_EXAMPLE, delivery, language, ...(voiceId ? { voice_id: voiceId } : {}) }
+      body = { kind, prompt: line || VOICE_EXAMPLE, delivery, language, ...(voiceId ? { voice_id: voiceId } : {}),
+               ...(translateTo ? { translate_to: translateTo } : {}) }
     }
     setBusy(true)
     try {
@@ -256,13 +258,32 @@ export function Composer({ voices, onCreated, onVoiceAdded, onVoiceDeleted }: Pr
 
       <details className="more-options" open={more} onToggle={(e) => setMore(e.currentTarget.open)}>
         <summary className="meta-label">More options</summary>
-        {kind === 'voice' || (kind === 'music' && vocals) ? (
+        {kind === 'voice' ? (
+          <>
+            <label className="control">
+              <span className="meta-label">Translate to</span>
+              <select className="input" value={translateTo} onChange={(e) => setTranslateTo(e.target.value)}>
+                <option value="">Don't translate</option>
+                {Object.entries(LANGUAGES).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+              </select>
+              <Hint>Write the line in any language; it is translated and spoken natively. The card shows what was said.</Hint>
+            </label>
+            <label className="control">
+              <span className="meta-label">Accent</span>
+              <select className="input" value={translateTo ? translateTo : language} disabled={!!translateTo}
+                onChange={(e) => setLanguage(e.target.value)}>
+                {Object.keys(LANGUAGES).map((code) => <option key={code} value={code}>{accentLabel(code)}</option>)}
+              </select>
+              <Hint>{translateTo ? 'Translated lines are spoken with a native accent.' : 'Speaks the line as written, with this accent.'}</Hint>
+            </label>
+          </>
+        ) : kind === 'music' && vocals ? (
           <label className="control">
-            <span className="meta-label">Language</span>
+            <span className="meta-label">Lyrics language</span>
             <select className="input" value={language} onChange={(e) => setLanguage(e.target.value)}>
               {Object.entries(LANGUAGES).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
             </select>
-            <Hint>Write the {kind === 'voice' ? 'line' : 'lyrics'} in this language: it sets the pronunciation, it does not translate.</Hint>
+            <Hint>The language the lyrics are written in, so they are sung with the right pronunciation.</Hint>
           </label>
         ) : (
           <>
