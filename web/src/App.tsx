@@ -107,7 +107,7 @@ export default function App() {
                 className="textarea"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Warm lofi hip hop loop, dusty rhodes, vinyl crackle, 80 BPM"
+                placeholder="Upbeat funk groove with slap bass, clean guitar and brass stabs, 105 BPM"
                 maxLength={2000}
                 required
               />
