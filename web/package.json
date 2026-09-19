@@ -1,5 +1,5 @@
 {
-  "name": "music-studio-web",
+  "name": "music-studio",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,9 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "deploy": "npm run build && wrangler deploy",
+    "dev:worker": "npm run build && wrangler dev --port 8787",
+    "cf-typegen": "wrangler types worker-configuration.d.ts --include-env=false"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -21,6 +24,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "wrangler": "^4.135.0"
   }
 }

@@ -1,192 +1,110 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { MODES, createJob, getAudio, getJob, health, type GenerationRequest, type Health, type Mode } from './api'
-import { Take, type Track } from './components/Take'
+import { api, type Take, type Voice } from './api'
+import { Composer } from './components/Composer'
+import { Library } from './components/Library'
+import { TakeCard } from './components/TakeCard'
+import { VoiceRecorder } from './components/VoiceRecorder'
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const pending = (t: Take) => t.status === 'queued' || t.status === 'in_progress'
 
 export default function App() {
-  const [prompt, setPrompt] = useState('')
-  const [mode, setMode] = useState<Mode>('Music')
-  const [seconds, setSeconds] = useState(30)
-  const [enhance, setEnhance] = useState(true)
-  const [seed, setSeed] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [tracks, setTracks] = useState<Track[]>([])
-  const [status, setStatus] = useState<Health | null>(null)
+  const [takes, setTakes] = useState<Take[]>([])
+  const [voices, setVoices] = useState<Voice[]>([])
+  const [online, setOnline] = useState<boolean | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [recording, setRecording] = useState(false)
   const [now, setNow] = useState(() => Date.now())
-  const urls = useRef<string[]>([])
 
-  const busy = tracks.some((t) => t.status === 'queued' || t.status === 'in_progress')
-
-  useEffect(() => {
-    const check = () => health().then(setStatus).catch(() => setStatus({ comfyui: false, missing_models: [] }))
-    check()
-    const t = setInterval(check, 15_000)
-    return () => clearInterval(t)
+  const merge = useCallback((incoming: Take[]) => {
+    setTakes((ts) => {
+      const byId = new Map(ts.map((t) => [t.id, t]))
+      incoming.forEach((t) => byId.set(t.id, t))
+      return [...byId.values()].sort((a, b) => b.created_at - a.created_at || a.name.localeCompare(b.name))
+    })
   }, [])
 
   useEffect(() => {
-    if (!busy) return
-    const t = setInterval(() => setNow(Date.now()), 250)
+    api.recent().then(merge).catch(() => {})
+    api.voices().then(setVoices).catch(() => {})
+    const check = () => api.status().then((s) => setOnline(s.agent_online)).catch(() => setOnline(null))
+    check()
+    const t = setInterval(check, 30_000)
     return () => clearInterval(t)
-  }, [busy])
+  }, [merge])
 
-  useEffect(() => () => urls.current.forEach(URL.revokeObjectURL), [])
+  const waitingIds = takes.filter(pending).map((t) => t.id).join()
+  useEffect(() => {
+    if (!waitingIds) return
+    const ids = waitingIds.split(',')
+    const t = setInterval(async () => {
+      setNow(Date.now())
+      const fresh = await Promise.all(ids.map((id) => api.take(id).catch(() => null)))
+      merge(fresh.filter((x): x is Take => x !== null))
+    }, 1500)
+    return () => clearInterval(t)
+  }, [waitingIds, merge])
 
-  const update = (id: string, patch: Partial<Track>) =>
-    setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)))
+  // Versions of one sound effect share a group and show as one card.
+  const groups = useMemo(() => {
+    const out = new Map<string, Take[]>()
+    takes.forEach((t) => out.set(t.group_id, [...(out.get(t.group_id) ?? []), t]))
+    return [...out.values()].map((g) => g.sort((a, b) => a.seed - b.seed)) // stable when a version is renamed
+  }, [takes])
 
-  async function generate(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    const body: GenerationRequest = { prompt, seconds, mode, enhance }
-    if (seed.trim()) body.seed = Number(seed)
-    let job
-    try {
-      job = await createJob(body)
-    } catch (err) {
-      setError((err as Error).message)
-      return
-    }
-    const startedAt = Date.now()
-    setTracks((ts) => [{ ...job, prompt, startedAt }, ...ts])
-    try {
-      for (;;) {
-        await sleep(1000)
-        const s = await getJob(job.id)
-        update(job.id, s)
-        if (s.status === 'failed') return
-        if (s.status === 'completed') break
-      }
-      const url = URL.createObjectURL(await getAudio(job.id))
-      urls.current.push(url)
-      update(job.id, { url, tookMs: Date.now() - startedAt })
-    } catch (err) {
-      update(job.id, { status: 'failed', error: { message: (err as Error).message } })
-    }
-  }
-
-  const headerStatus = !status
-    ? '…'
-    : !status.comfyui
-      ? 'ComfyUI offline'
-      : status.missing_models.length
-        ? 'Models missing'
-        : busy
-          ? 'Working'
-          : 'Ready'
+  const saved = takes.filter((t) => t.saved).length
+  const retryVoice = async (t: Take) =>
+    merge(await api.create({ kind: 'voice', prompt: t.prompt, delivery: t.delivery ?? 0.5, language: t.language ?? 'en',
+                             ...(t.voice_id ? { voice_id: t.voice_id } : {}) }))
 
   return (
     <>
       <header className="site-header">
         <div className="container site-header__inner">
-          <span className="meta-label">Stable Audio 3 · ComfyUI</span>
+          <span className="meta-label" title={online === false ? 'Start the local models to make new sounds' : undefined}>
+            {online === null ? '…' : online ? 'Models ready' : 'Models offline'}
+          </span>
           <span className="brand-mark">
             Music Studio
-            <span className="brand-mark__dot" />
+            <span className="brand-mark__pulse" />
           </span>
-          <span className="meta-label">{headerStatus}</span>
+          <button type="button" className="meta-label link-button" onClick={() => setLibraryOpen(true)}>
+            Library{saved ? ` · ${saved} saved here` : ''}
+          </button>
         </div>
       </header>
 
-      <main className="container">
-        <section className="intro">
-          <h1 className="page-title">Music Studio</h1>
-          <p className="lede">Describe a track, an instrument or a sound effect.</p>
-          {status?.missing_models.length ? (
-            <p className="error">ComfyUI is missing: {status.missing_models.join(', ')}. See the README.</p>
-          ) : null}
-        </section>
+      <main className="container studio">
+        <Composer voices={voices} onCreated={merge} onRecordVoice={() => setRecording(true)} />
 
-        <section className="studio">
-          <form onSubmit={generate} className="composer">
-            <label className="control">
-              <span className="meta-label">Prompt</span>
-              <textarea
-                className="textarea"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Upbeat funk groove with slap bass, clean guitar and brass stabs, 105 BPM"
-                maxLength={2000}
-                required
-              />
-            </label>
-
-            <fieldset className="control">
-              <legend className="meta-label">Mode</legend>
-              <div className="segments" role="radiogroup" aria-label="Mode">
-                {MODES.map((m) => (
-                  <button type="button" key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            <div className="control">
-              <span className="meta-label">Length · seconds</span>
-              <div className="length">
-                <input
-                  className="range"
-                  type="range"
-                  min={1}
-                  max={180}
-                  value={seconds}
-                  aria-label="Length in seconds"
-                  onChange={(e) => setSeconds(Number(e.target.value))}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  min={0.5}
-                  max={180}
-                  step={0.5}
-                  value={seconds}
-                  aria-label="Length in seconds"
-                  onChange={(e) => setSeconds(Number(e.target.value))}
-                />
-              </div>
-            </div>
-
-            <div className="options">
-              <label className="check">
-                <input type="checkbox" checked={enhance} onChange={(e) => setEnhance(e.target.checked)} />
-                <span className="meta-label">Enhance prompt</span>
-              </label>
-              <label className="seed">
-                <span className="meta-label">Seed</span>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={seed}
-                  onChange={(e) => setSeed(e.target.value)}
-                  placeholder="Random"
-                />
-              </label>
-            </div>
-
-            <button type="submit" className="button button--wide" disabled={!prompt.trim()}>
-              Generate
-            </button>
-            {error && <p className="error">{error}</p>}
-          </form>
-
-          <section className="takes" aria-label="Results">
-            <div className="takes__head">
-              <span className="meta-label">Takes</span>
-              <span className="meta-label">{tracks.length}</span>
-            </div>
-            {tracks.length === 0 && <p className="takes__empty">Nothing generated yet.</p>}
-            <ul className="takes__list">
-              {tracks.map((t) => (
-                <Take key={t.id} track={t} now={now} onReuseSeed={(s) => setSeed(String(s))} />
-              ))}
-            </ul>
-          </section>
+        <section className="takes" aria-label="Results">
+          <div className="takes__head">
+            <span className="meta-label">Your sounds</span>
+            <span className="meta-label">last 24 hours</span>
+          </div>
+          {!groups.length && (
+            <p className="takes__empty">
+              Nothing yet. Pick what you are making on the left and press Generate; sounds appear here in a few seconds.
+            </p>
+          )}
+          <ul className="takes__list">
+            {groups.map((g) => (
+              <TakeCard key={g[0].group_id} takes={g} now={now} onChange={(t) => merge([t])} onCreated={merge} onRetryVoice={retryVoice} />
+            ))}
+          </ul>
         </section>
       </main>
+
+      {libraryOpen && <Library onClose={() => setLibraryOpen(false)} onChange={(t) => merge([t])} />}
+      {recording && (
+        <VoiceRecorder
+          onClose={() => setRecording(false)}
+          onSaved={(v) => {
+            setVoices((vs) => [...vs, v].sort((a, b) => a.name.localeCompare(b.name)))
+            setRecording(false)
+          }}
+        />
+      )}
     </>
   )
 }
